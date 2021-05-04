@@ -1,0 +1,63 @@
+# Serverless Config for lambda-sftp-bridge
+
+service: lambda-sftp-bridge
+
+# pinning to only specific Serverless version
+frameworkVersion: '2'
+
+provider:
+  name: aws
+  runtime: java8
+  lambdaHashingVersion: 20201221
+  memorySize: 1024
+  timeout: 10
+  environment:
+    MAIN_CLASS: de.andywolf.sftpbridge.Application
+
+  #  stage: dev
+  region: eu-central-1
+
+  iam:
+    role:
+      statements:
+        - Effect: 'Allow'
+          Action:
+            - 's3:*'
+          Resource:
+            - 'arn:aws:s3:::${self:custom.eventBucket}/*'
+            - !Join ['', ['arn:aws:s3:::', !Ref ServerlessDeploymentBucket, '/*']]
+
+custom:
+  eventBucket: andywolf-event-bucket
+
+package:
+  artifact: target/lambda-sftp-bridge.jar
+
+functions:
+  s3EventFunction:
+    handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest
+    events:
+      - s3:
+          bucket: ${self:custom.eventBucket}
+          event: s3:ObjectCreated:*
+          #existing: true
+    environment:
+      SPRING_CLOUD_FUNCTION_DEFINITION: s3EventFunction
+      TARGET_URI: sftp://host:port/path/incoming/
+      TARGET_USER: my-user
+      TARGET_PASSWORD: optional-password
+      TARGET_PRIVATE_KEY: my-private-key
+
+  scheduledFunction:
+    handler: org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest
+    events:
+      - schedule: rate(2 minutes)
+    environment:
+      SPRING_CLOUD_FUNCTION_DEFINITION: scheduledFunction
+      SOURCE_URI: sftp://user@host:port/path/outgoing/
+      SOURCE_USER: my-user
+      SOURCE_PASSWORD: optional-password
+      SOURCE_PRIVATE_KEY: my-private-key
+      TARGET_URI: s3://my-data.bucket/path/incoming/
+
+      #GLOB_PATTERN ???
